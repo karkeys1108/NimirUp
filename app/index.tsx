@@ -4,20 +4,20 @@ import { OnboardingContainer } from '../components/onboarding';
 
 export default function OnboardingScreen() {
   const handleSkip = () => {
-    // Navigate to main app or home screen after skipping
-    router.push('/404'); // You can change this to your main app route later
+    // Navigate to main app tabs after skipping
+    router.push('/(tabs)');
   };
 
   const handleGetStarted = () => {
     // This will be called after successful authentication
-    // Navigate to main app or home screen
-    router.push('/404'); // You can change this to your main app route later
+    // Navigate to main app tabs
+    router.push('/(tabs)');
   };
 
   return (
     <OnboardingContainer 
       onSkip={handleSkip}
-      onGetStarted={handleGetStarted}
+      onGetStarted={handleGetStarted} 
     />
   );
 }

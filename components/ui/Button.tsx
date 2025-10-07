@@ -1,6 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, Text, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
-import { colors } from '../../constants/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 import { typography } from '../../constants/typography';
 
 interface ButtonProps {
@@ -26,6 +26,7 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
 }) => {
+  const { colors } = useTheme();
   const getButtonStyle = (): ViewStyle => {
     const baseStyle: ViewStyle = {
       borderRadius: 12,

@@ -1,6 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { TouchableOpacity, Text, Animated, StyleSheet } from 'react-native';
-import { colors, typography } from '../../constants';
+import { typography } from '../../constants';
+import { ColorPalette } from '../../constants/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface AnimatedButtonProps {
   title: string;
@@ -17,6 +19,8 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
   style,
   disabled = false,
 }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
   const shadowAnim = useRef(new Animated.Value(1)).current;
@@ -116,53 +120,54 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  primaryButton: {
-    backgroundColor: colors.accent,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 30,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-    minWidth: 140,
-    alignItems: 'center',
-  },
-  secondaryButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: colors.white,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 30,
-    minWidth: 120,
-    alignItems: 'center',
-  },
-  ghostButton: {
-    backgroundColor: 'transparent',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    alignItems: 'center',
-  },
-  primaryText: {
-    ...typography.button,
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  secondaryText: {
-    ...typography.button,
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  ghostText: {
-    ...typography.button,
-    color: colors.light,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create({
+    primaryButton: {
+      backgroundColor: colors.accent,
+      paddingVertical: 16,
+      paddingHorizontal: 32,
+      borderRadius: 30,
+      shadowColor: colors.accent,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.4,
+      shadowRadius: 12,
+      elevation: 8,
+      minWidth: 140,
+      alignItems: 'center',
+    },
+    secondaryButton: {
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderColor: colors.white,
+      paddingVertical: 14,
+      paddingHorizontal: 28,
+      borderRadius: 30,
+      minWidth: 120,
+      alignItems: 'center',
+    },
+    ghostButton: {
+      backgroundColor: 'transparent',
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 20,
+      alignItems: 'center',
+    },
+    primaryText: {
+      ...typography.button,
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    secondaryText: {
+      ...typography.button,
+      color: colors.white,
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    ghostText: {
+      ...typography.button,
+      color: colors.light,
+      fontSize: 16,
+      fontWeight: '500',
+    },
+  });

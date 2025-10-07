@@ -396,7 +396,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {/* Header */}
                 <View style={styles.header}>
                   <Text style={styles.title}>Forgot Password</Text>
-                  <Text style={styles.subtitle}>We'll send you a reset link</Text>
+                  <Text style={styles.subtitle}>We&apos;ll send you a reset link</Text>
                 </View>
 
                 {/* Form */}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, ViewStyle, TextStyle } from 'react-native';
-import { colors } from '../../constants/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 import { typography } from '../../constants/typography';
 
 interface LogoProps {
@@ -16,6 +16,8 @@ export const Logo: React.FC<LogoProps> = ({
   style,
   textStyle,
 }) => {
+  const { colors } = useTheme();
+  const accentColor = color || colors.accent;
   const getSizeStyles = () => {
     const sizes = {
       small: { fontSize: 20, marginBottom: 4 },
@@ -28,7 +30,7 @@ export const Logo: React.FC<LogoProps> = ({
   const logoTextStyle: TextStyle = {
     ...typography.logo,
     ...getSizeStyles(),
-    color: color || colors.primary,
+  color: accentColor,
     ...textStyle,
   };
 
@@ -36,8 +38,8 @@ export const Logo: React.FC<LogoProps> = ({
     <View style={[{ alignItems: 'center' }, style]}>
       <Text style={logoTextStyle}>NimirUp</Text>
       <View style={{
-        height: 2,
-        backgroundColor: colors.accent,
+        height: 1,
+  backgroundColor: accentColor,
         width: size === 'small' ? 40 : size === 'medium' ? 50 : 60,
         borderRadius: 1,
       }} />

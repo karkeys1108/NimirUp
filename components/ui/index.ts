@@ -7,3 +7,6 @@ export { SmoothPagination } from './SmoothPagination';
 export { AnimatedButton } from './AnimatedButton';
 export { AuthModal } from './AuthModal';
 export { Toast } from './Toast';
+export { SharedHeader } from './SharedHeader';
+export { Header } from './Header';
+export { Footer } from './Footer';
