@@ -63,7 +63,7 @@ export const WelcomeSlide: React.FC = () => {
           alignItems: 'center',
           marginBottom: 60,
         }}>
-          <Logo size="large" color={colors.white} />
+          <Logo size="large" color={colors.white} underlineColor={colors.accent} />
         </View>
         
         {/* Main Content */}

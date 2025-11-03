@@ -42,14 +42,14 @@ const QUICK_ACTIONS: QuickAction[] = [
   {
     id: 'assessment',
     icon: 'walk-outline',
-    title: 'Start Assessment',
-    description: '5 min guided check-in',
+    title: 'Todays top actions',
+    description: 'Actionable tips for you',
   },
   {
     id: 'coach',
     icon: 'chatbubble-ellipses-outline',
-    title: 'Ask AI Coach',
-    description: 'Get personalised advice',
+    title: 'Recommendations',
+    description: 'AI based recommendations',
   },
 ];
 
@@ -172,6 +172,18 @@ export default function HomePage() {
             </LinearGradient>
           </View>
 
+
+          <View style={styles.section}>
+            <View style={styles.comingSoonCard}>
+              <Ionicons name="cube-outline" size={36} color={colors.secondary} />
+              <Text style={styles.comingSoonTitle}>Upcoming 3D Modal</Text>
+              <Text style={styles.comingSoonDescription}>
+                We&apos;re building an immersive posture visualiser for clear insights.
+              </Text>
+            </View>
+          </View>
+
+
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -224,15 +236,7 @@ export default function HomePage() {
             </LinearGradient>
           </View>
 
-          <View style={styles.section}>
-            <View style={styles.comingSoonCard}>
-              <Ionicons name="cube-outline" size={36} color={colors.secondary} />
-              <Text style={styles.comingSoonTitle}>3D Analysis</Text>
-              <Text style={styles.comingSoonDescription}>
-                We&apos;re building an immersive posture visualiser for deeper insights.
-              </Text>
-            </View>
-          </View>
+          
         </Animated.ScrollView>
       </Pressable>
     </SafeAreaView>

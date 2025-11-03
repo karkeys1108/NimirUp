@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Animated, View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Animated, View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
@@ -21,8 +21,11 @@ export const Header: React.FC<HeaderProps> = ({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const pathname = usePathname();
-  const isProfileActive = pathname?.includes('/profile');
-  const isSettingsActive = pathname?.includes('/settings');
+  const isProfileRoute = pathname?.includes('/profile');
+  const isSettingsRoute = pathname?.includes('/settings');
+  const showBackButton = isProfileRoute || isSettingsRoute;
+  const headerTitle = isProfileRoute ? 'Profile' : isSettingsRoute ? 'Settings' : '';
+
   const handleProfilePress = () => {
     if (onProfilePress) onProfilePress();
     else router.push('/(tabs)/profile');
@@ -31,6 +34,14 @@ export const Header: React.FC<HeaderProps> = ({
   const handleSettingsPress = () => {
     if (onSettingsPress) onSettingsPress();
     else router.push('/(tabs)/settings');
+  };
+
+  const handleBackPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
   };
 
   // Fade in when scrolling down ~50px
@@ -61,35 +72,45 @@ export const Header: React.FC<HeaderProps> = ({
     <Animated.View style={[styles.header, headerShadowStyle]}>
       {/* Background that appears on scroll */}
       <Animated.View style={[styles.headerBackground, headerBackgroundStyle]} />
-      
+
       <SafeAreaView>
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={[styles.iconButton, isProfileActive && styles.iconButtonActive]}
-            onPress={handleProfilePress}
-          >
-            <Ionicons
-              name="person-circle-outline"
-              size={28}
-              color={isProfileActive ? colors.white : colors.primary}
-            />
-          </TouchableOpacity>
-
-          <View style={styles.logoContainer}>
-            <Logo size="small" color={colors.primary} />
+        {showBackButton ? (
+          <View style={styles.backHeaderContent}>
+            <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
+              <Ionicons name="arrow-back" size={24} color={colors.primary} />
+            </TouchableOpacity>
+            <Text style={styles.backTitle}>{headerTitle}</Text>
+            <View style={styles.backSpacer} />
           </View>
+        ) : (
+          <View style={styles.headerContent}>
+            <TouchableOpacity
+              style={[styles.iconButton, isProfileRoute && styles.iconButtonActive]}
+              onPress={handleProfilePress}
+            >
+              <Ionicons
+                name="person-circle-outline"
+                size={28}
+                color={isProfileRoute ? colors.white : colors.primary}
+              />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.iconButton, isSettingsActive && styles.iconButtonActive]}
-            onPress={handleSettingsPress}
-          >
-            <Ionicons
-              name="settings-outline"
-              size={26}
-              color={isSettingsActive ? colors.white : colors.primary}
-            />
-          </TouchableOpacity>
-        </View>
+            <View style={styles.logoContainer}>
+              <Logo size="small" color={colors.primary} />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.iconButton, isSettingsRoute && styles.iconButtonActive]}
+              onPress={handleSettingsPress}
+            >
+              <Ionicons
+                name="settings-outline"
+                size={26}
+                color={isSettingsRoute ? colors.white : colors.primary}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
       </SafeAreaView>
     </Animated.View>
   );
@@ -142,5 +163,30 @@ const createStyles = (colors: ColorPalette) =>
     logoContainer: {
       flex: 1,
       alignItems: 'center',
+    },
+    backHeaderContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 12,
+      height: 28,
+    },
+    backButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${colors.accent}20`,
+    },
+    backTitle: {
+      flex: 1,
+      textAlign: 'center',
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+    backSpacer: {
+      width: 40,
     },
   });

@@ -78,7 +78,7 @@ export const FeaturesSlide: React.FC = () => {
           alignItems: 'center',
           marginBottom: 40,
         }}>
-          <Logo size="large" color={colors.white} />
+          <Logo size="large" color={colors.white} underlineColor={colors.accent} />
         </View>
         
         <Text style={{

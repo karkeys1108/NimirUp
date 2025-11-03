@@ -19,7 +19,7 @@ interface ThemeProviderProps {
   children: ReactNode;
 }
 
-export const ThemeProvider: React.FC<ThemeProviderProps> = ({ initialTheme = 'dark', children }) => {
+export const ThemeProvider: React.FC<ThemeProviderProps> = ({ initialTheme = 'light', children }) => {
   const [theme, setTheme] = useState<ThemeName>(initialTheme);
 
   const palette = useMemo(() => (theme === 'dark' ? darkColors : lightColors), [theme]);

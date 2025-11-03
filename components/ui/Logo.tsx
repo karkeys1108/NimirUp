@@ -6,6 +6,7 @@ import { typography } from '../../constants/typography';
 interface LogoProps {
   size?: 'small' | 'medium' | 'large';
   color?: string;
+  underlineColor?: string;
   style?: ViewStyle;
   textStyle?: TextStyle;
 }
@@ -13,11 +14,13 @@ interface LogoProps {
 export const Logo: React.FC<LogoProps> = ({
   size = 'medium',
   color,
+  underlineColor,
   style,
   textStyle,
 }) => {
-  const { colors } = useTheme();
-  const accentColor = color || colors.accent;
+  const { colors: themeColors } = useTheme();
+  const textColor = color || themeColors.accent;
+  const lineColor = underlineColor ?? textColor;
   const getSizeStyles = () => {
     const sizes = {
       small: { fontSize: 20, marginBottom: 4 },
@@ -30,19 +33,21 @@ export const Logo: React.FC<LogoProps> = ({
   const logoTextStyle: TextStyle = {
     ...typography.logo,
     ...getSizeStyles(),
-  color: accentColor,
+    color: textColor,
     ...textStyle,
   };
 
   return (
     <View style={[{ alignItems: 'center' }, style]}>
       <Text style={logoTextStyle}>NimirUp</Text>
-      <View style={{
-        height: 1,
-  backgroundColor: accentColor,
-        width: size === 'small' ? 40 : size === 'medium' ? 50 : 60,
-        borderRadius: 1,
-      }} />
+      <View
+        style={{
+          height: 2,
+          backgroundColor: lineColor,
+          width: size === 'small' ? 40 : size === 'medium' ? 50 : 60,
+          borderRadius: 1,
+        }}
+      />
     </View>
   );
 };

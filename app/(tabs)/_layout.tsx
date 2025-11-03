@@ -81,10 +81,10 @@ export default function TabsLayout() {
           right: 0,
           backgroundColor: 'transparent',
           borderTopWidth: 0,
-          height: 76,
-          paddingBottom: 12,
-          paddingTop: 12,
-          paddingHorizontal: 24,
+          height: 102,
+          paddingBottom: 36,
+          paddingTop: 20,
+          paddingHorizontal: 32,
           elevation: 0,
         },
         tabBarBackground: () => <Footer />,
@@ -124,7 +124,7 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          href: null, // Hide from tab bar
+          href: null, // Hide from tab ba
         }}
       />
       <Tabs.Screen
@@ -149,7 +149,11 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   tabButtonFocused: {
-    transform: [{ scale: 1.05 }, { translateY: -2 }],
+    transform: [{ scale: 1.08 }, { translateY: -4 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
   },
   iconWrapper: {
     width: 40,

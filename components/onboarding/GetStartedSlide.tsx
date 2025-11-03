@@ -67,7 +67,7 @@ export const GetStartedSlide: React.FC<GetStartedSlideProps> = ({ onGetStarted }
           alignItems: 'center',
           marginBottom: 40,
         }}>
-          <Logo size="large" color={colors.white} />
+          <Logo size="large" color={colors.white} underlineColor={colors.accent} />
         </View>
         
         {/* Main Content */}

@@ -88,7 +88,7 @@ export const OnboardingContainer: React.FC<OnboardingContainerProps> = ({
       <SafeAreaView style={styles.safeArea}>
         {/* Logo at Top */}
         <View style={styles.logoContainer}>
-          <Logo size="large" color={colors.white} />
+          <Logo size="large" color={colors.white} underlineColor={colors.accent} />
         </View>
 
         {/* Content Slides */}

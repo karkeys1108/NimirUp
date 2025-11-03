@@ -1,12 +1,14 @@
+export { AnimatedButton } from './AnimatedButton';
+export { AnimatedText } from './AnimatedText';
+export { AuthModal } from './AuthModal';
 export { Button } from './Button';
+export { DeviceSettingsModal } from './DeviceSettingsModal';
+export { Footer } from './Footer';
+export { Header } from './Header';
 export { Logo } from './Logo';
 export { Pagination } from './Pagination';
-export { AnimatedText } from './AnimatedText';
-export { VideoBackground } from './VideoBackground';
-export { SmoothPagination } from './SmoothPagination';
-export { AnimatedButton } from './AnimatedButton';
-export { AuthModal } from './AuthModal';
-export { Toast } from './Toast';
 export { SharedHeader } from './SharedHeader';
-export { Header } from './Header';
-export { Footer } from './Footer';
+export { SmoothPagination } from './SmoothPagination';
+export { Toast } from './Toast';
+export { VideoBackground } from './VideoBackground';
+

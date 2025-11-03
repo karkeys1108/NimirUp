@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -9,12 +11,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Device } from 'react-native-ble-plx';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Header } from '../../components/ui';
-import { useTheme } from '../../contexts/ThemeContext';
+import { DeviceSettingsModal, Header } from '../../components/ui';
 import { ColorPalette } from '../../constants/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
 type ProfileStat = {
   label: string;
@@ -34,7 +35,9 @@ export default function ProfilePage() {
   const [isStatusBarVisible, setIsStatusBarVisible] = useState(false);
   const [lastTap, setLastTap] = useState(0);
   const [notifications, setNotifications] = useState(true);
-  const [isDeviceConnected] = useState(true);
+  const [isDeviceConnected, setIsDeviceConnected] = useState(false);
+  const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
+  const [isDeviceModalVisible, setIsDeviceModalVisible] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const { colors, theme, toggleTheme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -68,6 +71,24 @@ export default function ProfilePage() {
       setIsStatusBarVisible((prev) => !prev);
     }
     setLastTap(now);
+  };
+
+  const handleDeviceConnected = (device: Device) => {
+    setConnectedDevice(device);
+    setIsDeviceConnected(true);
+  };
+
+  const handleDeviceDisconnected = () => {
+    setConnectedDevice(null);
+    setIsDeviceConnected(false);
+  };
+
+  const handleOpenDeviceSettings = () => {
+    setIsDeviceModalVisible(true);
+  };
+
+  const handleCloseDeviceSettings = () => {
+    setIsDeviceModalVisible(false);
   };
 
   return (
@@ -163,7 +184,10 @@ export default function ProfilePage() {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.deviceButton}>
+              <TouchableOpacity 
+                style={styles.deviceButton}
+                onPress={handleOpenDeviceSettings}
+              >
                 <Ionicons name="settings-outline" size={16} color={colors.accent} />
                 <Text style={styles.deviceButtonText}>Device Settings</Text>
               </TouchableOpacity>
@@ -234,6 +258,16 @@ export default function ProfilePage() {
           </View>
         </Animated.ScrollView>
       </Pressable>
+
+      <DeviceSettingsModal
+        visible={isDeviceModalVisible}
+        onClose={handleCloseDeviceSettings}
+        colors={colors}
+        onDeviceConnected={handleDeviceConnected}
+        onDeviceDisconnected={handleDeviceDisconnected}
+        isConnected={isDeviceConnected}
+        connectedDeviceName={connectedDevice?.name || 'NimirUp Smart Belt'}
+      />
     </SafeAreaView>
   );
 }
