@@ -1,132 +1,107 @@
-import React, { useMemo, useRef } from 'react';
-import { Animated, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Header } from '../../components/ui';
+import { useBluetoothData } from '../../contexts/BluetoothDataContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColorPalette } from '../../constants/colors';
-
-type HistoryEntry = {
-  id: number;
-  date: string;
-  sessions: number;
-  duration: string;
-  improvement: string;
-  status: 'excellent' | 'good' | 'average';
-};
-
-const HISTORY_DATA: HistoryEntry[] = [
-  {
-    id: 1,
-    date: 'Today',
-    sessions: 3,
-    duration: '2h 45m',
-    improvement: '+12%',
-    status: 'excellent',
-  },
-  {
-    id: 2,
-    date: 'Yesterday',
-    sessions: 2,
-    duration: '1h 30m',
-    improvement: '+8%',
-    status: 'good',
-  },
-  {
-    id: 3,
-    date: '2 days ago',
-    sessions: 4,
-    duration: '3h 15m',
-    improvement: '+15%',
-    status: 'excellent',
-  },
-];
+import { DeviceSettingsModal, OfflineIndicator } from '../../components/ui';
 
 export default function HistoryPage() {
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const { colors, theme } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors } = useTheme();
+  const { entries, refreshEntries, loading } = useBluetoothData();
+  const [deviceModalVisible, setDeviceModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const statusBarStyle = theme === 'dark' ? 'light-content' : 'dark-content';
+  const styles = createStyles(colors);
 
-  const getStatusColor = (status: HistoryEntry['status']) => {
-    switch (status) {
-      case 'excellent':
-        return colors.accent;
-      case 'good':
-        return '#45b7d1';
-      case 'average':
-        return '#f4a259';
-      default:
-        return colors.secondary;
-    }
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refreshEntries();
+    setRefreshing(false);
   };
+
+  const formatTimestamp = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
+
+  const renderItem = ({ item }: { item: any }) => (
+    <View style={styles.dataItem}>
+      <View style={styles.dataHeader}>
+        <Ionicons name="bluetooth" size={16} color={colors.accent} />
+        <Text style={styles.dataTime}>{formatTimestamp(item.timestamp)}</Text>
+      </View>
+      <Text style={styles.dataValue} numberOfLines={2}>
+        {item.value}
+      </Text>
+      <Text style={styles.dataDeviceId}>{item.deviceId}</Text>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle={statusBarStyle} backgroundColor={colors.white} hidden />
+      <OfflineIndicator />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Bluetooth Data History</Text>
+        <TouchableOpacity
+          style={styles.deviceButton}
+          onPress={() => setDeviceModalVisible(true)}
+        >
+          <Ionicons name="settings-outline" size={20} color={colors.accent} />
+        </TouchableOpacity>
+      </View>
 
-      <Header scrollY={scrollY} />
-
-      <Animated.ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: false,
-        })}
-        scrollEventThrottle={16}
-      >
-        <View style={styles.pageHeader}>
-          <Text style={styles.pageTitle}>Posture History</Text>
-          <Text style={styles.pageSubtitle}>Track your progress over time</Text>
+      {loading && entries.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
-
-        {HISTORY_DATA.map((item) => (
-          <TouchableOpacity key={item.id} style={styles.historyCard}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.dateText}>{item.date}</Text>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: `${getStatusColor(item.status)}22` },
-                ]}
-              >
-                <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-                  {item.status.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.statsContainer}>
-              <View style={styles.statItem}>
-                <Ionicons name="time-outline" size={20} color={colors.secondary} />
-                <Text style={styles.statLabel}>Duration</Text>
-                <Text style={styles.statValue}>{item.duration}</Text>
-              </View>
-
-              <View style={styles.statItem}>
-                <Ionicons name="refresh-outline" size={20} color={colors.secondary} />
-                <Text style={styles.statLabel}>Sessions</Text>
-                <Text style={styles.statValue}>{item.sessions}</Text>
-              </View>
-
-              <View style={styles.statItem}>
-                <Ionicons name="trending-up-outline" size={20} color={colors.accent} />
-                <Text style={styles.statLabel}>Improvement</Text>
-                <Text style={[styles.statValue, { color: colors.accent }]}>{item.improvement}</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-
-        <View style={styles.comingSoonCard}>
-          <Ionicons name="analytics-outline" size={48} color={colors.secondary} />
-          <Text style={styles.comingSoonTitle}>Detailed Analytics</Text>
-          <Text style={styles.comingSoonText}>
-            Comprehensive reports and insights coming soon!
+      ) : entries.length > 0 ? (
+        <FlatList
+          data={entries}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+          }
+        />
+      ) : (
+        <View style={styles.zeroState}>
+          <Text style={styles.zeroValue}>0</Text>
+          <Text style={styles.zeroLabel}>BLE Data Points</Text>
+          <Text style={styles.zeroSubtext}>
+            Connect a device to start collecting data
           </Text>
         </View>
-      </Animated.ScrollView>
+      )}
+
+      <DeviceSettingsModal
+        visible={deviceModalVisible}
+        onClose={() => setDeviceModalVisible(false)}
+        colors={{
+          white: colors.white,
+          black: colors.black || '#000000',
+          primary: colors.primary,
+          secondary: colors.secondary,
+          tertiary: colors.light,
+          accent: colors.accent,
+          light: colors.light,
+          shadow: colors.shadow || '#000000',
+          overlay: 'rgba(0,0,0,0.5)',
+        }}
+        isConnected={false}
+        connectedDeviceName={undefined}
+        onDeviceConnected={() => {}}
+        onDeviceDisconnected={() => {}}
+      />
     </View>
   );
 }
@@ -136,99 +111,94 @@ const createStyles = (colors: ColorPalette) =>
     container: {
       flex: 1,
       backgroundColor: colors.white,
+      paddingTop: 60,
     },
-    content: {
-      flex: 1,
-    },
-    scrollContent: {
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
       paddingHorizontal: 20,
-      paddingTop: 92,
-      paddingBottom: 100,
-      gap: 16,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.light + '60',
     },
-    pageHeader: {
-      gap: 6,
-    },
-    pageTitle: {
-      fontSize: 24,
+    headerTitle: {
+      fontSize: 20,
       fontWeight: '700',
       color: colors.primary,
     },
-    pageSubtitle: {
-      fontSize: 14,
-      color: colors.secondary,
-      opacity: 0.85,
+    deviceButton: {
+      padding: 8,
     },
-    historyCard: {
-      backgroundColor: colors.light,
-      borderRadius: 16,
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    listContent: {
       padding: 20,
-      gap: 16,
+      gap: 12,
+    },
+    dataItem: {
+      backgroundColor: colors.white,
+      borderRadius: 12,
+      padding: 16,
       borderWidth: 1,
-      borderColor: `${colors.secondary}22`,
+      borderColor: colors.light + '50',
       shadowColor: colors.shadow,
       shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.08,
-      shadowRadius: 6,
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
       elevation: 3,
     },
-    cardHeader: {
+    dataHeader: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
+      gap: 8,
+      marginBottom: 8,
     },
-    dateText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.primary,
-    },
-    statusBadge: {
-      paddingHorizontal: 12,
-      paddingVertical: 4,
-      borderRadius: 12,
-    },
-    statusText: {
-      fontSize: 12,
-      fontWeight: '600',
-    },
-    statsContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    statItem: {
-      alignItems: 'center',
-      gap: 6,
-      flex: 1,
-    },
-    statLabel: {
+    dataTime: {
       fontSize: 12,
       color: colors.secondary,
-      opacity: 0.8,
+      opacity: 0.7,
     },
-    statValue: {
-      fontSize: 16,
-      fontWeight: '600',
+    dataValue: {
+      fontSize: 14,
       color: colors.primary,
+      fontWeight: '500',
+      marginBottom: 4,
     },
-    comingSoonCard: {
+    dataDeviceId: {
+      fontSize: 11,
+      color: colors.secondary,
+      opacity: 0.6,
+    },
+    zeroState: {
+      flex: 1,
+      justifyContent: 'center',
       alignItems: 'center',
+      padding: 40,
       gap: 12,
-      padding: 32,
-      backgroundColor: `${colors.secondary}15`,
-      borderRadius: 18,
-      marginTop: 8,
-      marginBottom: 40,
     },
-    comingSoonTitle: {
-      fontSize: 18,
+    zeroValue: {
+      fontSize: 64,
+      fontWeight: '700',
+      color: colors.secondary,
+      opacity: 0.5,
+    },
+    zeroLabel: {
+      fontSize: 16,
+      color: colors.secondary,
+      opacity: 0.7,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
       fontWeight: '600',
-      color: colors.primary,
     },
-    comingSoonText: {
+    zeroSubtext: {
       fontSize: 14,
       color: colors.secondary,
-      opacity: 0.85,
+      opacity: 0.6,
       textAlign: 'center',
-      lineHeight: 22,
+      marginTop: 8,
     },
   });
