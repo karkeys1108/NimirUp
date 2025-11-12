@@ -1,11 +1,12 @@
-import React from 'react';
-import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, TouchableOpacity, StyleProp, ViewStyle, View } from 'react-native';
-import { Footer } from '../../components/ui';
 import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useNavigationState } from '@react-navigation/native';
+import { Tabs } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Pressable, StyleSheet } from 'react-native';
+import { Footer } from '../../components/ui';
 import { ColorPalette } from '../../constants/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
 type RouteKey = 'history' | 'index' | 'ai-suggestions' | 'exercise';
 
@@ -28,47 +29,138 @@ const CustomTabBarButton = ({
   routeName,
   colors,
 }: CustomTabBarButtonProps) => {
-  const focused = Boolean(accessibilityState?.selected);
+  // Get current route name from navigation state
+  const currentRoute = useNavigationState((state) => {
+    const route = state?.routes[state?.index || 0];
+    return route?.name;
+  });
+  
+  const routeMatch = routeName === 'index' 
+    ? (currentRoute === 'index' || !currentRoute || currentRoute === '(tabs)')
+    : currentRoute === routeName;
+  
+  const isFocused = Boolean(accessibilityState?.selected) || routeMatch;
   const config = TAB_CONFIG[routeName] ?? TAB_CONFIG.index;
-  const buttonStyles: StyleProp<ViewStyle> = [
-    styles.tabButton,
-    focused && styles.tabButtonFocused,
-    focused && {
-      backgroundColor: `${colors.accent}1F`,
-      borderColor: `${colors.accent}55`,
-      shadowColor: colors.shadow,
-      shadowOpacity: 0.18,
-      shadowRadius: 10,
-      elevation: 6,
-    },
-    style,
-  ];
 
-  const iconWrapperStyles: StyleProp<ViewStyle> = [
-    styles.iconWrapper,
-    focused && { backgroundColor: colors.accent },
-  ];
+  // Animation values
+  const scaleAnim = useRef(new Animated.Value(isFocused ? 1 : 0.9)).current;
+  const opacityAnim = useRef(new Animated.Value(isFocused ? 1 : 0.6)).current;
+  const iconScaleAnim = useRef(new Animated.Value(isFocused ? 1.1 : 1)).current;
+  const pressAnim = useRef(new Animated.Value(1)).current;
+
+  // Animate on focus change
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: isFocused ? 1 : 0.9,
+        useNativeDriver: true,
+        tension: 300,
+        friction: 20,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: isFocused ? 1 : 0.6,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(iconScaleAnim, {
+        toValue: isFocused ? 1.1 : 1,
+        useNativeDriver: true,
+        tension: 300,
+        friction: 20,
+      }),
+    ]).start();
+  }, [isFocused]);
+
+  const handlePressIn = () => {
+    Animated.spring(pressAnim, {
+      toValue: 0.85,
+      useNativeDriver: true,
+      tension: 300,
+      friction: 10,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(pressAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 300,
+      friction: 10,
+    }).start();
+  };
 
   return (
-    <TouchableOpacity
+    <Pressable
       accessibilityRole="button"
-      activeOpacity={0.9}
       onPress={onPress}
-      style={buttonStyles}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={({ pressed }) => [
+        styles.tabButton,
+        style,
+      ]}
     >
-      <View style={iconWrapperStyles}>
-        <Ionicons
-          name={focused ? config.activeIcon : config.icon}
-          size={config.size ?? (focused ? 24 : 22)}
-          color={focused ? colors.white : colors.secondary}
-        />
-      </View>
-    </TouchableOpacity>
+      <Animated.View
+        style={[
+          styles.buttonContainer,
+          {
+            transform: [{ scale: Animated.multiply(scaleAnim, pressAnim) }],
+            opacity: opacityAnim,
+          },
+          isFocused && {
+            backgroundColor: colors.accent + '15',
+            borderRadius: 20,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+          },
+        ]}
+      >
+        <Animated.View
+          style={[
+            styles.iconWrapper,
+            {
+              transform: [{ scale: iconScaleAnim }],
+            },
+            isFocused && {
+              backgroundColor: colors.accent,
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              shadowColor: colors.accent,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 6,
+            },
+          ]}
+        >
+          <Ionicons
+            name={isFocused ? config.activeIcon : config.icon}
+            size={isFocused ? 24 : 22}
+            color={isFocused ? colors.white : colors.secondary}
+          />
+        </Animated.View>
+      </Animated.View>
+    </Pressable>
   );
 };
 
 export default function TabsLayout() {
-  const { colors } = useTheme();
+  let colors: ColorPalette;
+  try {
+    colors = useTheme().colors;
+  } catch (e) {
+    // Fallback colors if ThemeProvider is not available
+    colors = {
+      primary: '#1a1a1a',
+      secondary: '#666666',
+      accent: '#007AFF',
+      white: '#FFFFFF',
+      black: '#000000',
+      light: '#F5F5F5',
+      shadow: '#000000',
+    } as ColorPalette;
+  }
 
   return (
     <Tabs
@@ -89,51 +181,18 @@ export default function TabsLayout() {
         },
         tabBarBackground: () => <Footer />,
         headerShown: false,
-        tabBarButton: (props) => (
+        tabBarButton: (props) =>
           ['profile', 'settings'].includes(route.name)
             ? null
-            : <CustomTabBarButton {...props} routeName={route.name as RouteKey} colors={colors} />
-        ),
+            : <CustomTabBarButton {...props} routeName={route.name as RouteKey} colors={colors} />,
       })}
     >
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'History',
-        }}
-      />
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-        }}
-      />
-      <Tabs.Screen
-        name="ai-suggestions"
-        options={{
-          title: 'AI Coach',
-        }}
-      />
-      <Tabs.Screen
-        name="exercise"
-        options={{
-          title: 'Exercise',
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          href: null, // Hide from tab ba
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          href: null, // Hide from tab bar
-        }}
-      />
+      <Tabs.Screen name="history" options={{ title: 'History' }} />
+      <Tabs.Screen name="index" options={{ title: 'Home' }} />
+      <Tabs.Screen name="ai-suggestions" options={{ title: 'AI Coach' }} />
+      <Tabs.Screen name="exercise" options={{ title: 'Exercise' }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile', href: null }} />
+      <Tabs.Screen name="settings" options={{ title: 'Settings', href: null }} />
     </Tabs>
   );
 }
@@ -143,17 +202,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    minHeight: 56,
   },
-  tabButtonFocused: {
-    transform: [{ scale: 1.08 }, { translateY: -4 }],
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 8,
+  buttonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   iconWrapper: {
     width: 40,

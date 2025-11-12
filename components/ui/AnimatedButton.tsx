@@ -19,7 +19,21 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
   style,
   disabled = false,
 }) => {
-  const { colors } = useTheme();
+  let colors: ColorPalette;
+  try {
+    colors = useTheme().colors;
+  } catch (e) {
+    // Fallback colors if ThemeProvider is not available
+    colors = {
+      primary: '#1a1a1a',
+      secondary: '#666666',
+      accent: '#007AFF',
+      white: '#FFFFFF',
+      black: '#000000',
+      light: '#F5F5F5',
+      shadow: '#000000',
+    } as ColorPalette;
+  }
   const styles = useMemo(() => createStyles(colors), [colors]);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;

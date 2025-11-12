@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Modal,
   View,
@@ -10,10 +10,11 @@ import {
   PermissionsAndroid,
   Platform,
   Alert,
-  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BleManager, Device } from 'react-native-ble-plx';
+import { toByteArray } from 'base64-js';
+import { useBluetoothData } from '../../contexts/BluetoothDataContext';
 import { ColorPalette } from '../../constants/colors';
 
 interface DeviceSettingsModalProps {
@@ -26,8 +27,6 @@ interface DeviceSettingsModalProps {
   connectedDeviceName?: string;
 }
 
-const manager = new BleManager();
-
 export const DeviceSettingsModal = ({
   visible,
   onClose,
@@ -37,33 +36,71 @@ export const DeviceSettingsModal = ({
   isConnected,
   connectedDeviceName,
 }: DeviceSettingsModalProps) => {
+  const managerRef = useRef<BleManager | null>(null);
+  const subscriptionsRef = useRef<Array<{ remove: () => void }>>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
+  const { pushEntry } = useBluetoothData();
 
+  // ESP32 service/characteristic UUIDs (from your provided code)
+  const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'.toLowerCase();
+  const CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'.toLowerCase();
+
+  // Initialize BLE
   useEffect(() => {
-    requestPermissions();
+    if (Platform.OS === 'web') return;
+    if (visible && !managerRef.current) {
+      managerRef.current = new BleManager();
+      requestPermissions();
+    }
+
     return () => {
-      manager.stopDeviceScan();
+      // keep manager alive so connection persists across modal open/close
+      try {
+        subscriptionsRef.current.forEach((s) => s?.remove && s.remove());
+      } catch {}
+      subscriptionsRef.current = [];
+      try {
+        managerRef.current?.stopDeviceScan();
+      } catch {}
+      // Do NOT destroy the manager here so BLE connection can remain active
     };
-  }, []);
+  }, [visible]);
 
   const requestPermissions = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        ]);
-      } catch (error) {
-        console.warn('Permission request failed:', error);
+    if (Platform.OS !== 'android') return;
+
+    try {
+      const permissions = [
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      ];
+      const granted = await PermissionsAndroid.requestMultiple(permissions);
+      const denied = Object.values(granted).some(
+        (status) => status !== PermissionsAndroid.RESULTS.GRANTED
+      );
+      if (denied) {
+        Alert.alert(
+          'Permissions Required',
+          'Bluetooth permissions are required to find and connect to devices.'
+        );
       }
+    } catch (error) {
+      console.warn('Permission request failed:', error);
     }
   };
 
+  // Scan for BLE devices
   const scanForDevices = async () => {
+    const manager = managerRef.current;
+    if (!manager) {
+      Alert.alert('Bluetooth Not Ready', 'BLE manager not initialized');
+      return;
+    }
+
     if (isScanning) {
       manager.stopDeviceScan();
       setIsScanning(false);
@@ -80,60 +117,94 @@ export const DeviceSettingsModal = ({
           setIsScanning(false);
           return;
         }
-
         if (device && device.name) {
-          setDevices((prevDevices) => {
-            const exists = prevDevices.some((d) => d.id === device.id);
-            if (!exists) {
-              return [...prevDevices, device];
-            }
-            return prevDevices;
+          setDevices((prev) => {
+            const exists = prev.some((d) => d.id === device.id);
+            if (!exists) return [...prev, device];
+            return prev;
           });
         }
       });
 
-      // Stop scanning after 10 seconds
       setTimeout(() => {
         manager.stopDeviceScan();
         setIsScanning(false);
       }, 10000);
     } catch (error) {
-      console.warn('Scan start error:', error);
+      console.warn('Scan failed:', error);
       setIsScanning(false);
     }
   };
 
   const connectToDevice = async (device: Device) => {
+    const manager = managerRef.current;
+    if (!manager) {
+      Alert.alert('Bluetooth Not Ready', 'BLE manager not initialized');
+      return;
+    }
+
     setConnecting(true);
     try {
-      console.log('🔗 Connecting to', device.name);
+      // Connecting to device
       const connectedDev = await manager.connectToDevice(device.id);
       await connectedDev.discoverAllServicesAndCharacteristics();
       setConnectedDevice(connectedDev);
-      console.log('✅ Connected to', device.name);
-      
-      if (onDeviceConnected) {
-        onDeviceConnected(connectedDev);
+
+      // listen for unexpected disconnects and attempt to reconnect
+      try {
+        const discSub = manager.onDeviceDisconnected(connectedDev.id, async (error, dev) => {
+          console.warn('Device disconnected:', error, dev?.id);
+          setConnectedDevice(null);
+          if (onDeviceDisconnected) onDeviceDisconnected();
+          // try to reconnect a few times
+          const tryReconnect = async (attempt = 0) => {
+            if (attempt >= 5) {
+              console.warn('Max reconnect attempts reached');
+              return;
+            }
+            const delay = 2000 * (attempt + 1);
+            await new Promise((r) => setTimeout(r, delay));
+            try {
+              const reconnected = await manager.connectToDevice(device.id);
+              await reconnected.discoverAllServicesAndCharacteristics();
+              setConnectedDevice(reconnected);
+              subscribeToNotifications(reconnected);
+              if (onDeviceConnected) onDeviceConnected(reconnected);
+              console.log('Reconnected to device after disconnect');
+            } catch (e) {
+              console.warn('Reconnect attempt failed, retrying...', e);
+              await tryReconnect(attempt + 1);
+            }
+          };
+          tryReconnect();
+        });
+        subscriptionsRef.current.push(discSub as any);
+      } catch (e) {
+        // some platforms may not support onDeviceDisconnected; ignore
       }
 
-      Alert.alert('Success', `Connected to ${device.name}`);
+      subscribeToNotifications(connectedDev);
+
+      if (onDeviceConnected) onDeviceConnected(connectedDev);
+      Alert.alert('Connected', `Connected to ${device.name}`);
     } catch (error) {
       console.warn('❌ Connection failed:', error);
-      Alert.alert('Connection Failed', `Could not connect to ${device.name}`);
+  Alert.alert('Connection Failed', `Could not connect to ${device.name}`);
     } finally {
       setConnecting(false);
     }
   };
 
   const disconnectDevice = async () => {
-    if (connectedDevice) {
+    const manager = managerRef.current;
+    if (connectedDevice && manager) {
       try {
         await manager.cancelDeviceConnection(connectedDevice.id);
         setConnectedDevice(null);
-        if (onDeviceDisconnected) {
-          onDeviceDisconnected();
-        }
-        Alert.alert('Success', 'Device disconnected');
+        subscriptionsRef.current.forEach((s) => s.remove?.());
+        subscriptionsRef.current = [];
+        if (onDeviceDisconnected) onDeviceDisconnected();
+        Alert.alert('Disconnected', 'Device disconnected');
       } catch (error) {
         console.warn('Disconnect error:', error);
         Alert.alert('Error', 'Failed to disconnect device');
@@ -141,40 +212,100 @@ export const DeviceSettingsModal = ({
     }
   };
 
+  const subscribeToNotifications = async (connectedDev: Device) => {
+    const manager = managerRef.current;
+    if (!manager) return;
+
+    try {
+      // Prefer subscribing directly to the known service/characteristic from the ESP32
+      const trySub = async (serviceUuid: string, charUuid: string) => {
+        try {
+          const sub = manager.monitorCharacteristicForDevice(
+            connectedDev.id,
+            serviceUuid,
+            charUuid,
+            (error, characteristic) => {
+              if (error) {
+                console.warn('Notification error (direct):', error);
+                return;
+              }
+              if (characteristic && characteristic.value) {
+                const raw = characteristic.value;
+                // decode base64 -> bytes -> ascii (ESP32 is sending ASCII text)
+                try {
+                  const bytes = toByteArray(raw);
+                  const decoded = String.fromCharCode.apply(null, bytes as any);
+                  pushEntry({ deviceId: connectedDev.id, value: decoded, raw });
+                } catch (e) {
+                  // fallback: store raw
+                  pushEntry({ deviceId: connectedDev.id, value: raw, raw });
+                }
+              }
+            }
+          );
+          subscriptionsRef.current.push(sub as any);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      };
+
+      let directOk = false;
+      try {
+        directOk = await trySub(SERVICE_UUID, CHARACTERISTIC_UUID);
+      } catch {}
+
+      if (!directOk) {
+        // Fallback: iterate services/characteristics and subscribe to any notify-capable
+        const services = await connectedDev.services();
+        for (const svc of services) {
+          const characteristics = await connectedDev.characteristicsForService(svc.uuid);
+          for (const char of characteristics) {
+            const properties = (char as any).properties || [];
+            const canNotify = properties.includes('Notify') || properties.includes('notify');
+            if (!canNotify) continue;
+
+            const sub = manager.monitorCharacteristicForDevice(
+              connectedDev.id,
+              svc.uuid,
+              char.uuid,
+              (error, characteristic) => {
+                if (error) {
+                  console.warn('Notification error (fallback):', error);
+                  return;
+                }
+                if (characteristic && characteristic.value) {
+                  const raw = characteristic.value;
+                  try {
+                    const bytes = toByteArray(raw);
+                    const decoded = String.fromCharCode.apply(null, bytes as any);
+                    pushEntry({ deviceId: connectedDev.id, value: decoded, raw });
+                  } catch (e) {
+                    pushEntry({ deviceId: connectedDev.id, value: raw, raw });
+                  }
+                }
+              }
+            );
+            subscriptionsRef.current.push(sub as any);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Subscribe error:', e);
+    }
+  };
+
   const styles = StyleSheet.create({
-    centeredView: {
-      flex: 1,
-      justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
+    centeredView: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalView: {
       backgroundColor: colors.white,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      paddingTop: 24,
-      paddingHorizontal: 20,
-      paddingBottom: 30,
+      padding: 20,
       maxHeight: '90%',
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-      shadowOpacity: 0.25,
-      shadowRadius: 4,
-      elevation: 5,
     },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 24,
-    },
-    title: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: colors.primary,
-    },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    title: { fontSize: 18, fontWeight: '700', color: colors.primary },
     closeButton: {
       width: 36,
       height: 36,
@@ -183,152 +314,22 @@ export const DeviceSettingsModal = ({
       justifyContent: 'center',
       alignItems: 'center',
     },
-    statusSection: {
-      marginBottom: 24,
-      padding: 16,
-      backgroundColor: `${colors.accent}10`,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: `${colors.accent}25`,
-    },
-    statusTitle: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.secondary,
-      marginBottom: 8,
-    },
-    statusContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    statusBadge: {
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      backgroundColor: isConnected ? '#4ade80' : '#ef4444',
-    },
-    statusText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.primary,
-      flex: 1,
-    },
     scanButton: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
       paddingVertical: 12,
-      paddingHorizontal: 16,
       backgroundColor: colors.accent,
       borderRadius: 12,
       marginBottom: 20,
     },
-    scanButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.white,
-    },
-    disconnectButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      backgroundColor: '#ef4444',
-      borderRadius: 12,
-      marginBottom: 20,
-    },
-    disconnectButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.white,
-    },
-    deviceListContainer: {
-      marginVertical: 12,
-    },
-    deviceListTitle: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.secondary,
-      marginBottom: 12,
-    },
-    deviceItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 14,
-      marginBottom: 10,
-      backgroundColor: colors.light,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: `${colors.secondary}15`,
-    },
-    deviceIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: `${colors.accent}20`,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 12,
-    },
-    deviceInfo: {
-      flex: 1,
-    },
-    deviceName: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.primary,
-    },
-    deviceId: {
-      fontSize: 12,
-      color: colors.secondary,
-      opacity: 0.7,
-      marginTop: 2,
-    },
-    emptyState: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 40,
-    },
-    emptyStateIcon: {
-      marginBottom: 12,
-    },
-    emptyStateText: {
-      fontSize: 14,
-      color: colors.secondary,
-      textAlign: 'center',
-    },
-    loadingContainer: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 40,
-    },
-    loadingText: {
-      marginTop: 12,
-      fontSize: 14,
-      color: colors.secondary,
-      fontWeight: '500',
-    },
-    notConnectedText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: '#ef4444',
-    },
+    scanButtonText: { color: colors.white, fontWeight: '600' },
   });
 
   return (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
-          {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Device Settings</Text>
             <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -336,101 +337,68 @@ export const DeviceSettingsModal = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Connection Status */}
-            <View style={styles.statusSection}>
-              <Text style={styles.statusTitle}>Connection Status</Text>
-              <View style={styles.statusContent}>
-                <View style={styles.statusBadge} />
-                <Text style={styles.statusText}>
-                  {isConnected ? `Connected: ${connectedDeviceName || 'Device'}` : 'Device Not Connected'}
-                </Text>
-              </View>
-            </View>
+          <Text style={{ marginBottom: 16 }}>
+            {isConnected ? `✅ Connected: ${connectedDeviceName || 'Device'}` : '❌ Not connected'}
+          </Text>
 
-            {/* Action Button */}
-            {isConnected && connectedDevice ? (
-              <TouchableOpacity
-                style={styles.disconnectButton}
-                onPress={disconnectDevice}
-                disabled={connecting}
-              >
-                <Ionicons name="link-outline" size={18} color={colors.white} />
-                <Text style={styles.disconnectButtonText}>
-                  {connecting ? 'Disconnecting...' : 'Disconnect Device'}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.scanButton}
-                onPress={scanForDevices}
-                disabled={connecting}
-              >
-                {isScanning ? (
-                  <>
-                    <ActivityIndicator color={colors.white} size="small" />
-                    <Text style={styles.scanButtonText}>Scanning...</Text>
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name="bluetooth" size={18} color={colors.white} />
-                    <Text style={styles.scanButtonText}>Find Device</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
+          {isConnected && connectedDevice ? (
+            <TouchableOpacity
+              style={[styles.scanButton, { backgroundColor: '#ef4444' }]}
+              onPress={disconnectDevice}
+            >
+              <Ionicons name="link-outline" size={18} color={colors.white} />
+              <Text style={styles.scanButtonText}>Disconnect</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.scanButton} onPress={scanForDevices}>
+              {isScanning ? (
+                <>
+                  <ActivityIndicator color={colors.white} />
+                  <Text style={styles.scanButtonText}>Scanning...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="bluetooth" size={18} color={colors.white} />
+                  <Text style={styles.scanButtonText}>Find Devices</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
 
-            {/* Devices List */}
-            {!isConnected && (
-              <View style={styles.deviceListContainer}>
-                <Text style={styles.deviceListTitle}>
-                  Available Devices {devices.length > 0 && `(${devices.length})`}
-                </Text>
-
-                {isScanning && devices.length === 0 ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator color={colors.accent} size="large" />
-                    <Text style={styles.loadingText}>Scanning for devices...</Text>
-                  </View>
-                ) : devices.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <View style={styles.emptyStateIcon}>
-                      <Ionicons name="bluetooth-outline" size={40} color={colors.secondary} />
-                    </View>
-                    <Text style={styles.emptyStateText}>
-                      {isScanning ? 'Searching for devices...' : 'No devices found. Tap Find Device to search.'}
-                    </Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={devices}
-                    keyExtractor={(item) => item.id}
-                    scrollEnabled={false}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={styles.deviceItem}
-                        onPress={() => connectToDevice(item)}
-                        disabled={connecting}
-                      >
-                        <View style={styles.deviceIcon}>
-                          <Ionicons name="fitness" size={20} color={colors.accent} />
-                        </View>
-                        <View style={styles.deviceInfo}>
-                          <Text style={styles.deviceName}>{item.name || 'Unnamed Device'}</Text>
-                          <Text style={styles.deviceId}>ID: {item.id.substring(0, 12)}...</Text>
-                        </View>
-                        {connecting ? (
-                          <ActivityIndicator color={colors.accent} size="small" />
-                        ) : (
-                          <Ionicons name="chevron-forward" size={20} color={colors.secondary} />
-                        )}
-                      </TouchableOpacity>
-                    )}
+          {!isConnected && (
+            <FlatList
+              data={devices}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => connectToDevice(item)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 12,
+                    borderRadius: 12,
+                    backgroundColor: colors.light,
+                    marginBottom: 10,
+                  }}
+                >
+                  <Ionicons
+                    name="watch-outline"
+                    size={22}
+                    color={colors.accent}
+                    style={{ marginRight: 10 }}
                   />
-                )}
-              </View>
-            )}
-          </ScrollView>
+                  <Text style={{ color: colors.primary, fontWeight: '600' }}>
+                    {item.name || 'Unnamed Device'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={{ textAlign: 'center', color: colors.secondary }}>
+                  {isScanning ? 'Scanning...' : 'No devices found. Tap Find Devices.'}
+                </Text>
+              }
+            />
+          )}
         </View>
       </View>
     </Modal>

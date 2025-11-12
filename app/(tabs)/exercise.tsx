@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Animated,
   Pressable,
@@ -7,21 +7,22 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Header } from '../../components/ui';
+import { Header, OfflineIndicator } from '../../components/ui';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColorPalette } from '../../constants/colors';
+import { apiService } from '../../services/api';
+import { getBodyPartIcon } from '../../utils/bodyPartIcons';
 
 type Exercise = {
-  id: number;
+  id: string;
   title: string;
-  duration: string;
-  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  description: string;
+  bodyPart: string;
+  duration?: string;
+  difficulty?: 'Beginner' | 'Intermediate' | 'Advanced';
+  description?: string;
 };
 
 export default function ExercisePage() {
@@ -31,49 +32,38 @@ export default function ExercisePage() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const exercises = useMemo<Exercise[]>(
-    () => [
-      {
-        id: 1,
-        title: 'Neck Stretch',
-        duration: '5 min',
-        difficulty: 'Beginner',
-        icon: 'body-outline',
-        color: colors.accent,
-        description: 'Gentle neck stretches to relieve tension',
-      },
-      {
-        id: 2,
-        title: 'Shoulder Rolls',
-        duration: '3 min',
-        difficulty: 'Beginner',
-        icon: 'refresh-outline',
-        color: '#4ECDC4',
-        description: 'Circular shoulder movements to improve mobility',
-      },
-      {
-        id: 3,
-        title: 'Core Strengthening',
-        duration: '10 min',
-        difficulty: 'Intermediate',
-        icon: 'fitness-outline',
-        color: '#45B7D1',
-        description: 'Build core strength for better posture support',
-      },
-      {
-        id: 4,
-        title: 'Spine Alignment',
-        duration: '8 min',
-        difficulty: 'Beginner',
-        icon: 'trending-up-outline',
-        color: '#F7DC6F',
-        description: 'Exercises to improve spinal alignment',
-      },
-    ],
-    [colors.accent]
-  );
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [apiConnected, setApiConnected] = useState(false);
 
-  const getDifficultyColor = (difficulty: Exercise['difficulty']) => {
+  useEffect(() => {
+    loadExercises();
+  }, []);
+
+  const loadExercises = async () => {
+    try {
+      setLoading(true);
+      
+      // Try to get from API
+      try {
+        const exercisesData = await apiService.getExercises();
+        setExercises(exercisesData);
+        setApiConnected(true);
+      } catch (error) {
+        console.error('API error, backend not connected:', error);
+        // Backend not connected - show 0 for all
+        setExercises([]);
+        setApiConnected(false);
+      }
+    } catch (error) {
+      console.error('Error loading exercises:', error);
+      setApiConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getDifficultyColor = (difficulty?: string) => {
     switch (difficulty) {
       case 'Beginner':
         return colors.accent;
@@ -84,6 +74,23 @@ export default function ExercisePage() {
       default:
         return colors.secondary;
     }
+  };
+
+  const getBodyPartColor = (bodyPart: string) => {
+    // Generate a color based on body part
+    const colors_map: Record<string, string> = {
+      neck: colors.accent,
+      shoulder: '#4ECDC4',
+      shoulders: '#4ECDC4',
+      back: '#45B7D1',
+      spine: '#F7DC6F',
+      core: '#9AD9F0',
+      abs: '#9AD9F0',
+      chest: '#FF6B6B',
+      leg: '#95E1D3',
+      legs: '#95E1D3',
+    };
+    return colors_map[bodyPart.toLowerCase()] || colors.accent;
   };
 
   const handleDoubleTap = () => {
@@ -106,6 +113,7 @@ export default function ExercisePage() {
       />
 
       <Header scrollY={scrollY} />
+      <OfflineIndicator />
 
       <Pressable style={styles.content} onPress={handleDoubleTap}>
         <Animated.ScrollView
@@ -117,65 +125,70 @@ export default function ExercisePage() {
           })}
           scrollEventThrottle={16}
         >
-          <LinearGradient
-            colors={[colors.accent, colors.secondary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.challengeCard}
-          >
-            <View style={styles.challengeContent}>
-              <Ionicons name="trophy-outline" size={32} color={colors.white} />
-              <View style={styles.challengeText}>
-                <Text style={styles.challengeTitle}>Daily Challenge</Text>
-                <Text style={styles.challengeDescription}>
-                  Complete 3 exercises today to maintain your streak!
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.challengeButton}>
-                <Text style={styles.challengeButtonText}>Start</Text>
-              </TouchableOpacity>
-            </View>
-          </LinearGradient>
-
           <View style={styles.exercisesContainer}>
             <Text style={styles.sectionTitle}>Recommended Exercises</Text>
 
-            {exercises.map((exercise) => (
-              <TouchableOpacity key={exercise.id} style={styles.exerciseCard}>
-                <View style={[styles.exerciseIcon, { backgroundColor: exercise.color + '20' }]}>
-                  <Ionicons name={exercise.icon} size={24} color={exercise.color} />
-                </View>
-
-                <View style={styles.exerciseInfo}>
-                  <Text style={styles.exerciseTitle}>{exercise.title}</Text>
-                  <Text style={styles.exerciseDescription}>{exercise.description}</Text>
-
-                  <View style={styles.exerciseMeta}>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="time-outline" size={14} color={colors.secondary} />
-                      <Text style={styles.metaText}>{exercise.duration}</Text>
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.accent} />
+              </View>
+            ) : !apiConnected || exercises.length === 0 ? (
+              <View style={styles.zeroState}>
+                <Text style={styles.zeroValue}>0</Text>
+                <Text style={styles.zeroLabel}>Exercises</Text>
+              </View>
+            ) : (
+              exercises.map((exercise) => {
+                const icon = getBodyPartIcon(exercise.bodyPart);
+                const iconColor = getBodyPartColor(exercise.bodyPart);
+                
+                return (
+                  <TouchableOpacity key={exercise.id} style={styles.exerciseCard}>
+                    <View style={[styles.exerciseIcon, { backgroundColor: iconColor + '20' }]}>
+                      <Ionicons name={icon} size={24} color={iconColor} />
                     </View>
 
-                    <View
-                      style={[
-                        styles.difficultyBadge,
-                        { backgroundColor: getDifficultyColor(exercise.difficulty) + '20' },
-                      ]}
-                    >
-                      <Text
-                        style={[styles.difficultyText, { color: getDifficultyColor(exercise.difficulty) }]}
-                      >
-                        {exercise.difficulty}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+                    <View style={styles.exerciseInfo}>
+                      <Text style={styles.exerciseTitle}>{exercise.title}</Text>
+                      {exercise.description && (
+                        <Text style={styles.exerciseDescription}>{exercise.description}</Text>
+                      )}
 
-                <TouchableOpacity style={styles.playButton}>
-                  <Ionicons name="play" size={20} color={colors.white} />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
+                      <View style={styles.exerciseMeta}>
+                        {exercise.duration && (
+                          <View style={styles.metaItem}>
+                            <Ionicons name="time-outline" size={14} color={colors.secondary} />
+                            <Text style={styles.metaText}>{exercise.duration}</Text>
+                          </View>
+                        )}
+
+                        {exercise.difficulty && (
+                          <View
+                            style={[
+                              styles.difficultyBadge,
+                              { backgroundColor: getDifficultyColor(exercise.difficulty) + '20' },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.difficultyText,
+                                { color: getDifficultyColor(exercise.difficulty) },
+                              ]}
+                            >
+                              {exercise.difficulty}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    <TouchableOpacity style={styles.playButton}>
+                      <Ionicons name="play" size={20} color={colors.white} />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </View>
 
           <View style={styles.comingSoonCard}>
@@ -210,41 +223,6 @@ const createStyles = (colors: ColorPalette) =>
       paddingVertical: 20,
       gap: 24,
     },
-    challengeCard: {
-      borderRadius: 18,
-      padding: 20,
-      gap: 16,
-    },
-    challengeContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 16,
-    },
-    challengeText: {
-      flex: 1,
-      gap: 6,
-    },
-    challengeTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.white,
-    },
-    challengeDescription: {
-      fontSize: 14,
-      color: colors.white,
-      opacity: 0.9,
-    },
-    challengeButton: {
-      backgroundColor: colors.white,
-      paddingHorizontal: 18,
-      paddingVertical: 8,
-      borderRadius: 14,
-    },
-    challengeButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.primary,
-    },
     exercisesContainer: {
       gap: 16,
     },
@@ -252,6 +230,42 @@ const createStyles = (colors: ColorPalette) =>
       fontSize: 18,
       fontWeight: '600',
       color: colors.primary,
+    },
+    loadingContainer: {
+      padding: 40,
+      alignItems: 'center',
+    },
+    emptyState: {
+      padding: 40,
+      alignItems: 'center',
+      gap: 12,
+    },
+    emptyStateText: {
+      fontSize: 16,
+      color: colors.secondary,
+      opacity: 0.7,
+    },
+    zeroState: {
+      padding: 40,
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.light + '40',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.light + '60',
+    },
+    zeroValue: {
+      fontSize: 48,
+      fontWeight: '700',
+      color: colors.secondary,
+      opacity: 0.5,
+    },
+    zeroLabel: {
+      fontSize: 14,
+      color: colors.secondary,
+      opacity: 0.7,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
     },
     exerciseCard: {
       flexDirection: 'row',

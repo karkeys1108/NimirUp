@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { DeviceSettingsModal, OfflineIndicator } from '../../components/ui';
+import { ColorPalette } from '../../constants/colors';
 import { useBluetoothData } from '../../contexts/BluetoothDataContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { ColorPalette } from '../../constants/colors';
-import { DeviceSettingsModal, OfflineIndicator } from '../../components/ui';
 
 export default function HistoryPage() {
   const { colors } = useTheme();

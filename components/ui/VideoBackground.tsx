@@ -26,7 +26,7 @@ export const VideoBackground: React.FC<VideoBackgroundProps> = ({
           });
           await videoRef.current.playAsync();
         } catch (error) {
-          console.log('Video setup error:', error);
+          // Video setup error - silent fail
         }
       }
     };

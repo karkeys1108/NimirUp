@@ -110,11 +110,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 1500);
   };
 
-  const handleGoogleLogin = () => {
-    showToast('Google login feature coming soon!', 'info');
-    setTimeout(() => {
-      onAuthenticated();
-    }, 1000);
+  const handleGoogleLogin = async () => {
+    try {
+      setIsLoading(true);
+      const { authService } = await import('../../services/auth');
+      await authService.signInWithGoogle();
+      showToast('Successfully logged in with Google!', 'success');
+      setTimeout(() => {
+        onAuthenticated();
+      }, 1000);
+    } catch (error: any) {
+      showToast(error.message || 'Failed to sign in with Google', 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleForgotPassword = () => {
@@ -213,11 +222,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                   {/* Google Login */}
                   <TouchableOpacity
-                    style={styles.googleButton}
+                    style={[styles.googleButton, isLoading && styles.disabledButton]}
                     onPress={handleGoogleLogin}
+                    disabled={isLoading}
                   >
                     <Ionicons name="logo-google" size={20} color={colors.primary} />
-                    <Text style={styles.googleButtonText}>Continue with Google</Text>
+                    <Text style={styles.googleButtonText}>
+                      {isLoading ? 'Signing in...' : 'Continue with Google'}
+                    </Text>
                   </TouchableOpacity>
 
                   {/* Auth Options */}

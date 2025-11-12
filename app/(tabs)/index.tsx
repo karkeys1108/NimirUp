@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Animated,
   Pressable,
@@ -7,98 +7,80 @@ import {
   Text,
   TouchableOpacity,
   View,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Header } from '../../components/ui';
+import { useRouter } from 'expo-router';
+import { Header, OfflineIndicator } from '../../components/ui';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColorPalette } from '../../constants/colors';
+import { apiService } from '../../services/api';
+import { getAlertIcon, getAlertColor } from '../../utils/bodyPartIcons';
+import { useBluetoothData } from '../../contexts/BluetoothDataContext';
 
-type Metric = {
+type Insight = {
   id: string;
-  label: string;
-  value: string;
-  delta: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  alertLevel: number; // 1-5, where 1 is most crucial
+  message: string;
+  timestamp: number;
+  bodyPart?: string;
 };
 
-type QuickAction = {
+type Exercise = {
   id: string;
-  icon: keyof typeof Ionicons.glyphMap;
   title: string;
-  description: string;
+  bodyPart: string;
+  duration?: string;
 };
-
-type PosturePoint = {
-  id: number;
-  title: string;
-  description: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-};
-
-const QUICK_ACTIONS: QuickAction[] = [
-  {
-    id: 'assessment',
-    icon: 'walk-outline',
-    title: 'Todays top actions',
-    description: 'Actionable tips for you',
-  },
-  {
-    id: 'coach',
-    icon: 'chatbubble-ellipses-outline',
-    title: 'Recommendations',
-    description: 'AI based recommendations',
-  },
-];
 
 export default function HomePage() {
   const { colors, theme } = useTheme();
+  const router = useRouter();
   const [isStatusBarVisible, setIsStatusBarVisible] = useState(false);
   const [lastTap, setLastTap] = useState(0);
   const scrollY = useRef(new Animated.Value(0)).current;
   const styles = useMemo(() => createStyles(colors), [colors]);
+  
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [topExercises, setTopExercises] = useState<Exercise[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [apiConnected, setApiConnected] = useState(false);
+  const { entries } = useBluetoothData();
 
-  const snapshotMetrics = useMemo<Metric[]>(
-    () => [
-      { id: 'alignment', label: 'Alignment', value: '82%', delta: '+8%', icon: 'body' },
-      { id: 'sessions', label: 'Sessions', value: '3 today', delta: '+1', icon: 'pulse-outline' },
-      { id: 'streak', label: 'Streak', value: '5 days', delta: 'On track', icon: 'flame-outline' },
-    ],
-    []
-  );
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const posturePoints = useMemo<PosturePoint[]>(
-    () => [
-      {
-        id: 1,
-        title: 'Open your chest',
-        description: 'Roll shoulders back and down to prevent slouching.',
-        icon: 'expand-outline',
-        color: colors.accent,
-      },
-      {
-        id: 2,
-        title: 'Engage your core',
-        description: 'Lightly brace your core to stabilise your spine.',
-        icon: 'fitness-outline',
-        color: '#F7DC6F',
-      },
-      {
-        id: 3,
-        title: 'Ground through feet',
-        description: 'Keep weight evenly distributed for balanced posture.',
-        icon: 'footsteps-outline',
-        color: '#9AD9F0',
-      },
-    ],
-    [colors.accent]
-  );
-
-  const routineProgress = 0.68;
-  const progressPercent = useMemo(() => Math.round(routineProgress * 100), [routineProgress]);
-  const progressWidth = `${progressPercent}%` as const;
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      
+      // Try to get from API
+      try {
+        const [insightsData, exercisesData] = await Promise.all([
+          apiService.getRecentInsights(),
+          apiService.getTopExercises(),
+        ]);
+        setInsights(insightsData.slice(0, 4)); // Show top 4 insights
+        setTopExercises(exercisesData);
+        setApiConnected(true);
+      } catch (error) {
+        console.error('API error, backend not connected:', error);
+        // Backend not connected - show 0 for all
+        setInsights([]);
+        setTopExercises([]);
+        setApiConnected(false);
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+      setApiConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDoubleTap = () => {
     const now = Date.now();
@@ -108,7 +90,32 @@ export default function HomePage() {
     setLastTap(now);
   };
 
+  const handleQuickActionPress = (actionId: string) => {
+    if (actionId === 'recommendations') {
+      router.push('/(tabs)/ai-suggestions');
+    } else if (actionId === 'exercises') {
+      router.push('/(tabs)/exercise');
+    }
+  };
+
   const statusBarStyle = theme === 'dark' ? 'light-content' : 'dark-content';
+
+  const formatTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) {
+      return `${diffMins} min ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    } else {
+      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -120,6 +127,7 @@ export default function HomePage() {
       />
 
       <Header scrollY={scrollY} />
+      <OfflineIndicator />
 
       <Pressable style={styles.tapLayer} onPress={handleDoubleTap}>
         <Animated.ScrollView
@@ -130,49 +138,7 @@ export default function HomePage() {
           })}
           scrollEventThrottle={16}
         >
-          <View style={styles.hintChip}>
-            <Ionicons name="hand-left-outline" size={14} color={colors.secondary} />
-            <Text style={styles.hintText}>Double tap anywhere to toggle the status bar</Text>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Today&apos;s Snapshot</Text>
-            <View style={styles.metricsRow}>
-              {snapshotMetrics.map((metric) => (
-                <View key={metric.id} style={styles.metricCard}>
-                  <View style={styles.metricHeader}>
-                    <Ionicons name={metric.icon} size={18} color={colors.accent} />
-                    <Text style={styles.metricLabel}>{metric.label}</Text>
-                  </View>
-                  <Text style={styles.metricValue}>{metric.value}</Text>
-                  <Text style={styles.metricDelta}>{metric.delta}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <LinearGradient
-              colors={[colors.primary, colors.secondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.routineCard}
-            >
-              <View style={styles.routineHeader}>
-                <View style={styles.routineBadge}>
-                  <Ionicons name="barbell-outline" size={18} color={colors.primary} />
-                </View>
-                <Text style={styles.routineTitle}>Active Routine</Text>
-              </View>
-              <Text style={styles.routineSubtitle}>Mobility &amp; Core Reset</Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: progressWidth }]} />
-              </View>
-              <Text style={styles.progressLabel}>{progressPercent}% complete</Text>
-            </LinearGradient>
-          </View>
-
-
+          {/* 3D Modal Coming Soon */}
           <View style={styles.section}>
             <View style={styles.comingSoonCard}>
               <Ionicons name="cube-outline" size={36} color={colors.secondary} />
@@ -183,60 +149,124 @@ export default function HomePage() {
             </View>
           </View>
 
-
+          {/* Quick Actions */}
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Quick Actions</Text>
-              <TouchableOpacity>
-                <Text style={styles.sectionLink}>More</Text>
-              </TouchableOpacity>
-            </View>
-
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
             <View style={styles.quickActionsRow}>
-              {QUICK_ACTIONS.map((action) => (
-                <TouchableOpacity key={action.id} style={styles.quickActionCard}>
-                  <View style={styles.quickActionIcon}>
-                    <Ionicons name={action.icon} size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.quickActionTextWrap}>
-                    <Text style={styles.quickActionTitle}>{action.title}</Text>
-                    <Text style={styles.quickActionDescription}>{action.description}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+              <TouchableOpacity
+                style={styles.quickActionCard}
+                onPress={() => handleQuickActionPress('exercises')}
+              >
+                <View style={styles.quickActionIcon}>
+                  <Ionicons name="barbell-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.quickActionTextWrap}>
+                  <Text style={styles.quickActionTitle}>Today&apos;s Top Actions</Text>
+                  <Text style={styles.quickActionDescription}>Recommended exercises</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
+              </TouchableOpacity>
 
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Daily Posture Tips</Text>
-              <TouchableOpacity>
-                <Text style={styles.sectionLink}>View all</Text>
+              <TouchableOpacity
+                style={styles.quickActionCard}
+                onPress={() => handleQuickActionPress('recommendations')}
+              >
+                <View style={styles.quickActionIcon}>
+                  <Ionicons name="bulb-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.quickActionTextWrap}>
+                  <Text style={styles.quickActionTitle}>Recommendations</Text>
+                  <Text style={styles.quickActionDescription}>AI based recommendations</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
               </TouchableOpacity>
             </View>
-
-            <LinearGradient
-              colors={[colors.white, colors.light]}
-              style={styles.tipsCard}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              {posturePoints.map((point) => (
-                <View key={point.id} style={styles.tipItem}>
-                  <View style={[styles.tipIcon, { backgroundColor: point.color + '1A' }]}>
-                    <Ionicons name={point.icon} size={18} color={point.color} />
-                  </View>
-                  <View style={styles.tipText}>
-                    <Text style={styles.tipTitle}>{point.title}</Text>
-                    <Text style={styles.tipDescription}>{point.description}</Text>
-                  </View>
-                </View>
-              ))}
-            </LinearGradient>
           </View>
 
-          
+          {/* Recent Insights with Alert Icons */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recent Insights</Text>
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.accent} />
+              </View>
+            ) : !apiConnected ? (
+              <View style={styles.zeroState}>
+                <Text style={styles.zeroValue}>0</Text>
+                <Text style={styles.zeroLabel}>Insights</Text>
+              </View>
+            ) : insights.length > 0 ? (
+              <View style={styles.insightsTable}>
+                {insights.map((insight) => (
+                  <View key={insight.id} style={styles.insightRow}>
+                    <View
+                      style={[
+                        styles.alertIconContainer,
+                        { backgroundColor: getAlertColor(insight.alertLevel) + '20' },
+                      ]}
+                    >
+                      <Ionicons
+                        name={getAlertIcon(insight.alertLevel)}
+                        size={20}
+                        color={getAlertColor(insight.alertLevel)}
+                      />
+                    </View>
+                    <View style={styles.insightContent}>
+                      <Text style={styles.insightMessage}>{insight.message}</Text>
+                      <Text style={styles.insightTime}>{formatTime(insight.timestamp)}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.zeroState}>
+                <Text style={styles.zeroValue}>0</Text>
+                <Text style={styles.zeroLabel}>Insights</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Top Exercises */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Top Exercises</Text>
+            {!apiConnected || topExercises.length === 0 ? (
+              <View style={styles.zeroState}>
+                <Text style={styles.zeroValue}>0</Text>
+                <Text style={styles.zeroLabel}>Exercises</Text>
+              </View>
+            ) : (
+              <View style={styles.exercisesList}>
+                {topExercises.slice(0, 4).map((exercise) => (
+                  <TouchableOpacity
+                    key={exercise.id}
+                    style={styles.exerciseCard}
+                    onPress={() => router.push('/(tabs)/exercise')}
+                  >
+                    <View style={styles.exerciseIcon}>
+                      <Ionicons name="barbell-outline" size={18} color={colors.accent} />
+                    </View>
+                    <View style={styles.exerciseInfo}>
+                      <Text style={styles.exerciseTitle}>{exercise.title}</Text>
+                      {exercise.duration && (
+                        <Text style={styles.exerciseDuration}>{exercise.duration}</Text>
+                      )}
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* BLE Data Status */}
+          <View style={styles.section}>
+            <View style={styles.bleStatusCard}>
+              <Ionicons name="bluetooth" size={20} color={colors.accent} />
+              <Text style={styles.bleStatusText}>
+                {entries.length > 0 ? `${entries.length} BLE data points collected` : '0 BLE data points'}
+              </Text>
+            </View>
+          </View>
         </Animated.ScrollView>
       </Pressable>
     </SafeAreaView>
@@ -259,120 +289,33 @@ const createStyles = (colors: ColorPalette) =>
       paddingHorizontal: 20,
       gap: 24,
     },
-    hintChip: {
-      alignSelf: 'flex-start',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      backgroundColor: colors.light + '40',
-      borderRadius: 999,
-    },
-    hintText: {
-      fontSize: 12,
-      color: colors.secondary,
-    },
     section: {
       gap: 16,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
     },
     sectionTitle: {
       fontSize: 18,
       fontWeight: '600',
       color: colors.primary,
     },
-    sectionLink: {
-      fontSize: 13,
-      color: colors.accent,
-      fontWeight: '600',
-    },
-    metricsRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: 12,
-    },
-    metricCard: {
-      flex: 1,
-      padding: 14,
-      borderRadius: 14,
-      backgroundColor: colors.white,
-      borderWidth: 1,
-      borderColor: colors.light + '60',
-      shadowColor: colors.shadow,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.2,
-      shadowRadius: 8,
-      elevation: 6,
-      gap: 6,
-    },
-    metricHeader: {
-      flexDirection: 'row',
+    comingSoonCard: {
       alignItems: 'center',
-      gap: 6,
+      gap: 12,
+      padding: 28,
+      borderRadius: 20,
+      backgroundColor: colors.light + '30',
+      borderWidth: 1,
+      borderColor: colors.light + '70',
     },
-    metricLabel: {
-      fontSize: 13,
-      color: colors.secondary,
-      fontWeight: '500',
-    },
-    metricValue: {
-      fontSize: 20,
+    comingSoonTitle: {
+      fontSize: 17,
       fontWeight: '700',
       color: colors.primary,
     },
-    metricDelta: {
-      fontSize: 12,
-      color: colors.accent,
-      fontWeight: '600',
-    },
-    routineCard: {
-      borderRadius: 18,
-      padding: 20,
-      gap: 12,
-    },
-    routineHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-    },
-    routineBadge: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: colors.light,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    routineTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.light,
-    },
-    routineSubtitle: {
+    comingSoonDescription: {
       fontSize: 13,
-      color: colors.light,
-      opacity: 0.85,
-    },
-    progressBar: {
-      height: 6,
-      backgroundColor: colors.light + '30',
-      borderRadius: 999,
-      overflow: 'hidden',
-    },
-    progressFill: {
-      height: '100%',
-      backgroundColor: colors.accent,
-      borderRadius: 999,
-    },
-    progressLabel: {
-      fontSize: 12,
-      color: colors.light,
-      opacity: 0.9,
+      color: colors.secondary,
+      textAlign: 'center',
+      lineHeight: 20,
     },
     quickActionsRow: {
       gap: 12,
@@ -414,58 +357,129 @@ const createStyles = (colors: ColorPalette) =>
       color: colors.secondary,
       opacity: 0.85,
     },
-    tipsCard: {
-      padding: 18,
-      borderRadius: 18,
-      gap: 16,
+    insightsTable: {
+      gap: 12,
+    },
+    insightRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: colors.light + '40',
       borderWidth: 1,
       borderColor: colors.light + '60',
-      backgroundColor: colors.white,
-    },
-    tipItem: {
-      flexDirection: 'row',
       gap: 12,
-      alignItems: 'flex-start',
     },
-    tipIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+    alertIconContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       justifyContent: 'center',
       alignItems: 'center',
     },
-    tipText: {
+    insightContent: {
       flex: 1,
-      gap: 2,
+      gap: 4,
     },
-    tipTitle: {
-      fontSize: 15,
+    insightMessage: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.primary,
+    },
+    insightTime: {
+      fontSize: 12,
+      color: colors.secondary,
+      opacity: 0.7,
+    },
+    loadingContainer: {
+      padding: 20,
+      alignItems: 'center',
+    },
+    emptyState: {
+      padding: 32,
+      alignItems: 'center',
+      gap: 8,
+    },
+    emptyStateText: {
+      fontSize: 14,
+      color: colors.secondary,
+      opacity: 0.7,
+    },
+    zeroState: {
+      padding: 32,
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.light + '40',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.light + '60',
+    },
+    zeroValue: {
+      fontSize: 48,
+      fontWeight: '700',
+      color: colors.secondary,
+      opacity: 0.5,
+    },
+    zeroLabel: {
+      fontSize: 14,
+      color: colors.secondary,
+      opacity: 0.7,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    exercisesList: {
+      gap: 12,
+    },
+    exerciseCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: colors.white,
+      borderWidth: 1,
+      borderColor: colors.light + '50',
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+      gap: 12,
+    },
+    exerciseIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.accent + '20',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    exerciseInfo: {
+      flex: 1,
+      gap: 4,
+    },
+    exerciseTitle: {
+      fontSize: 14,
       fontWeight: '600',
       color: colors.primary,
     },
-    tipDescription: {
+    exerciseDuration: {
       fontSize: 12,
       color: colors.secondary,
-      lineHeight: 18,
+      opacity: 0.7,
     },
-    comingSoonCard: {
+    bleStatusCard: {
+      flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
-      padding: 28,
-      borderRadius: 20,
-      backgroundColor: colors.light + '30',
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: colors.accent + '15',
       borderWidth: 1,
-      borderColor: colors.light + '70',
+      borderColor: colors.accent + '30',
+      gap: 8,
     },
-    comingSoonTitle: {
-      fontSize: 17,
-      fontWeight: '700',
-      color: colors.primary,
-    },
-    comingSoonDescription: {
+    bleStatusText: {
       fontSize: 13,
-      color: colors.secondary,
-      textAlign: 'center',
-      lineHeight: 20,
+      color: colors.primary,
+      fontWeight: '500',
     },
   });

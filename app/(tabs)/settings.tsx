@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Header } from '../../components/ui';
+import { apiService } from '../../services/api';
 import { typography } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColorPalette } from '../../constants/colors';
@@ -210,6 +211,38 @@ export default function SettingsPage() {
     },
   ];
 
+  // Metrics from backend
+  const [metrics, setMetrics] = useState<{ session?: number; streak?: number; posture?: string } | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setMetricsLoading(true);
+      setMetricsError(null);
+      try {
+        const data = await apiService.getUserDetails();
+        // expecting backend to return something like { metrics: { session, streak, posture } }
+        if (!mounted) return;
+        const m = data?.metrics || {
+          session: data?.sessionCount,
+          streak: data?.streak,
+          posture: data?.postureStatus,
+        };
+        setMetrics(m);
+      } catch (e: any) {
+        console.warn('Failed to load metrics', e);
+        if (!mounted) return;
+        setMetricsError('Failed to load metrics');
+      } finally {
+        if (mounted) setMetricsLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, []);
+
   const renderSettingItem = (item: any, index: number) => {
     return (
       <TouchableOpacity
@@ -277,6 +310,29 @@ export default function SettingsPage() {
             <Text style={styles.headerSubtitle}>
               Customize your NimirUp experience
             </Text>
+            {/* Metrics row */}
+            <View style={styles.metricsRow}>
+              {metricsLoading ? (
+                <Text style={styles.metricText}>Loading metrics...</Text>
+              ) : metricsError ? (
+                <Text style={styles.metricText}>{metricsError}</Text>
+              ) : (
+                <View style={styles.metricsInner}>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>Sessions</Text>
+                    <Text style={styles.metricValue}>{metrics?.session ?? '-'}</Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>Streak</Text>
+                    <Text style={styles.metricValue}>{metrics?.streak ?? '-'}</Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>Posture</Text>
+                    <Text style={styles.metricValue}>{metrics?.posture ?? '-'}</Text>
+                  </View>
+                </View>
+              )}
+            </View>
           </LinearGradient>
 
           {/* Settings Sections */}
@@ -436,5 +492,34 @@ const createStyles = (colors: ColorPalette) =>
       color: colors.secondary,
       opacity: 0.7,
       textAlign: 'center',
+    },
+    metricsRow: {
+      marginTop: 16,
+      width: '100%',
+      alignItems: 'center',
+    },
+    metricsInner: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      width: '100%',
+      paddingHorizontal: 12,
+    },
+    metricItem: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    metricLabel: {
+      fontSize: 12,
+      color: colors.light,
+      marginBottom: 4,
+    },
+    metricValue: {
+      fontSize: 18,
+      color: colors.white,
+      fontWeight: '700',
+    },
+    metricText: {
+      fontSize: 14,
+      color: colors.white,
     },
   });

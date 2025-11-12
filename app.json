@@ -64,7 +64,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "react-native-ble-plx"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -73,7 +74,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e039edd4-cf95-4112-9fce-89bc8bf763b4"
+        "projectId": "1e2d1b75-9391-4bbd-96a4-cc3acb68dba8"
       }
     }
   }

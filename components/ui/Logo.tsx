@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { View, Text, ViewStyle, TextStyle } from 'react-native';
-import { useTheme } from '../../contexts/ThemeContext';
+import { ThemeContext } from '../../contexts/ThemeContext';
 import { typography } from '../../constants/typography';
+import { lightColors } from '../../constants/colors';
 
 interface LogoProps {
   size?: 'small' | 'medium' | 'large';
@@ -18,7 +19,10 @@ export const Logo: React.FC<LogoProps> = ({
   style,
   textStyle,
 }) => {
-  const { colors: themeColors } = useTheme();
+  // Use context safely with fallback
+  const themeContext = useContext(ThemeContext);
+  const themeColors = themeContext?.colors || lightColors;
+  
   const textColor = color || themeColors.accent;
   const lineColor = underlineColor ?? textColor;
   const getSizeStyles = () => {

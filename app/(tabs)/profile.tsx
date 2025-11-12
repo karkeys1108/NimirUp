@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Animated,
   Pressable,
@@ -10,12 +10,16 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import { Device } from 'react-native-ble-plx';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DeviceSettingsModal, Header } from '../../components/ui';
 import { ColorPalette } from '../../constants/colors';
 import { useTheme } from '../../contexts/ThemeContext';
+import { apiService } from '../../services/api';
+import { storageService } from '../../services/storage';
+import { useAuth } from '../../contexts/AuthContext';
 
 type ProfileStat = {
   label: string;
@@ -31,6 +35,16 @@ type DeviceInfo = {
   connected: boolean;
 };
 
+type UserDetails = {
+  id?: string;
+  name?: string;
+  email?: string;
+  photo?: string;
+  sessions?: number;
+  streak?: number;
+  postureScore?: number;
+};
+
 export default function ProfilePage() {
   const [isStatusBarVisible, setIsStatusBarVisible] = useState(false);
   const [lastTap, setLastTap] = useState(0);
@@ -38,20 +52,68 @@ export default function ProfilePage() {
   const [isDeviceConnected, setIsDeviceConnected] = useState(false);
   const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
   const [isDeviceModalVisible, setIsDeviceModalVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [apiConnected, setApiConnected] = useState(false);
+  const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
   const { colors, theme, toggleTheme } = useTheme();
+  const { signOut } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const statusBarStyle = theme === 'dark' ? 'light-content' : 'dark-content';
   const isDarkMode = theme === 'dark';
 
+  useEffect(() => {
+    loadUserData();
+  }, []);
+
+  const loadUserData = async () => {
+    try {
+      setLoading(true);
+      
+      // Try to get from API
+      try {
+        const userData = await apiService.getUserDetails();
+        setUserDetails(userData);
+        setApiConnected(true);
+      } catch (error) {
+        console.error('API error, backend not connected:', error);
+        // Try to get from local storage
+        const cachedData = await storageService.getUserDetails();
+        if (cachedData) {
+          setUserDetails(cachedData);
+        } else {
+          setUserDetails(null);
+        }
+        setApiConnected(false);
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+      setApiConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const profileStats = useMemo<ProfileStat[]>(
     () => [
-      { label: 'Sessions', value: '24', icon: 'pulse-outline' },
-      { label: 'Streak', value: '7 days', icon: 'flame-outline' },
-      { label: 'Posture', value: '85%', icon: 'trophy-outline' },
+      { 
+        label: 'Sessions', 
+        value: userDetails?.sessions?.toString() || '0', 
+        icon: 'pulse-outline' 
+      },
+      { 
+        label: 'Streak', 
+        value: userDetails?.streak ? `${userDetails.streak} days` : '0 days', 
+        icon: 'flame-outline' 
+      },
+      { 
+        label: 'Posture', 
+        value: userDetails?.postureScore ? `${userDetails.postureScore}%` : '0%', 
+        icon: 'trophy-outline' 
+      },
     ],
-    []
+    [userDetails]
   );
 
   const deviceInfo = useMemo<DeviceInfo>(
@@ -64,6 +126,17 @@ export default function ProfilePage() {
     }),
     [isDeviceConnected]
   );
+
+  const userName = userDetails?.name || 'Default User';
+  const userEmail = userDetails?.email || '';
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
 
   const handleDoubleTap = () => {
     const now = Date.now();
@@ -126,23 +199,29 @@ export default function ProfilePage() {
                 <Ionicons name="camera" size={16} color={colors.primary} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.userName}>Karthikeyan</Text>
-            <Text style={styles.userEmail}>karthikeyan30@gmail.com</Text>
+            <Text style={styles.userName}>{userName}</Text>
+            {userEmail ? <Text style={styles.userEmail}>{userEmail}</Text> : null}
             <TouchableOpacity style={styles.editProfileButton}>
               <Text style={styles.editProfileText}>Edit Profile</Text>
             </TouchableOpacity>
           </LinearGradient>
 
           {/* Stats Cards */}
-          <View style={styles.statsContainer}>
-            {profileStats.map((stat) => (
-              <View key={stat.label} style={styles.statCard}>
-                <Ionicons name={stat.icon} size={20} color={colors.accent} />
-                <Text style={styles.statValue}>{stat.value}</Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.accent} />
+            </View>
+          ) : (
+            <View style={styles.statsContainer}>
+              {profileStats.map((stat) => (
+                <View key={stat.label} style={styles.statCard}>
+                  <Ionicons name={stat.icon} size={20} color={colors.accent} />
+                  <Text style={styles.statValue}>{stat.value}</Text>
+                  <Text style={styles.statLabel}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
           {/* IoT Device Section */}
           <View style={styles.section}>
@@ -250,7 +329,10 @@ export default function ProfilePage() {
                 <Text style={styles.actionButtonText}>Export Data</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.actionButton, styles.signOutButton]}>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.signOutButton]}
+                onPress={handleSignOut}
+              >
                 <Ionicons name="log-out-outline" size={18} color="#ff6b6b" />
                 <Text style={[styles.actionButtonText, { color: '#ff6b6b' }]}>Sign Out</Text>
               </TouchableOpacity>
@@ -536,5 +618,10 @@ const createStyles = (colors: ColorPalette) =>
     },
     signOutButton: {
       borderColor: '#ff6b6b55',
+    },
+    loadingContainer: {
+      padding: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });
